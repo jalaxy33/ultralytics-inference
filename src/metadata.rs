@@ -111,9 +111,7 @@ impl ModelMetadata {
                     }
                     "stride" => {
                         metadata.stride = value.parse().map_err(|_| {
-                            InferenceError::ModelLoadError(format!(
-                                "Invalid stride value: {value}"
-                            ))
+                            InferenceError::ModelLoadError(format!("Invalid stride value: {value}"))
                         })?;
                     }
                     "batch" => {
@@ -129,7 +127,16 @@ impl ModelMetadata {
                         })?;
                     }
                     "half" => {
-                        metadata.half = value == "true";
+                        metadata.half = value == "true" || value == "True";
+                    }
+                    "args" => {
+                        // Parse args dict for half flag: {'half': True, ...}
+                        if value.contains("'half': True")
+                            || value.contains("\"half\": true")
+                            || value.contains("'half':True")
+                        {
+                            metadata.half = true;
+                        }
                     }
                     _ => {
                         // Check for class name entries (numeric keys)
@@ -238,7 +245,9 @@ impl ModelMetadata {
                 let current_indent = line.len() - line.trim_start().len();
 
                 // Check if we've exited the names block
-                if !trimmed.is_empty() && !trimmed.starts_with('#') && current_indent <= names_indent
+                if !trimmed.is_empty()
+                    && !trimmed.starts_with('#')
+                    && current_indent <= names_indent
                 {
                     // Only exit if this isn't a class entry
                     if !trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {

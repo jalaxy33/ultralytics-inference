@@ -31,8 +31,9 @@ name = "inference"
 path = "src/main.rs"
 
 [dependencies]
-# Image processing with SIMD
-image = "0.25.9"
+# Core - Image loading and processing
+image = "0.25"
+jpeg-decoder = "0.3"
 fast_image_resize = { version = "5.1", features = ["image"] }
 
 # Numerical computing (must match ort's ndarray version 0.17)
@@ -41,11 +42,20 @@ ndarray = { version = "0.17", features = ["rayon"] }
 # ONNX Runtime 1.23 - using latest from GitHub for best performance
 ort = { git = "https://github.com/pykeio/ort.git", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "half", "tls-native"] }
 
-# File pattern matching
-glob = "0.3"
+# Core - FP16 support (required by ort's half feature)
+half = "2.4"
+ureq = "3.1.4"
+dirs = "6.0"
+
+# Optional - Image annotation (for --save feature)
+imageproc = { version = "0.25", optional = true }
+ab_glyph = { version = "0.2", optional = true }
 
 [features]
-default = []
+default = ["annotate"]
+
+# Image annotation support (for --save feature in CLI)
+annotate = ["imageproc", "ab_glyph"]
 
 # NVIDIA GPU acceleration
 cuda = ["ort/cuda"]

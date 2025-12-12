@@ -19,6 +19,12 @@ use std::env;
 use std::path::Path;
 use std::process;
 
+#[cfg(feature = "annotate")]
+use std::fs;
+
+#[cfg(feature = "annotate")]
+use inference::annotate::{annotate_image, find_next_run_dir, load_image};
+
 use inference::{InferenceConfig, Results, YOLOModel, VERSION};
 
 /// Default model path when not specified.
@@ -56,6 +62,8 @@ fn run_prediction(args: &[String]) {
     let mut source_path: Option<&String> = None;
     let mut conf_threshold = 0.25_f32;
     let mut iou_threshold = 0.45_f32;
+    let mut save = false;
+    let mut half = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -96,6 +104,14 @@ fn run_prediction(args: &[String]) {
                     process::exit(1);
                 }
             }
+            "--save" => {
+                save = true;
+                i += 1;
+            }
+            "--half" => {
+                half = true;
+                i += 1;
+            }
             _ => {
                 eprintln!("Unknown argument: {}", args[i]);
                 process::exit(1);
@@ -130,13 +146,29 @@ fn run_prediction(args: &[String]) {
         }
     };
 
-    // Print banner matching Ultralytics format
-    println!("Ultralytics {} 🚀 Rust ONNX CPU", VERSION);
+    // Create save directory if --save is specified
+    #[cfg(feature = "annotate")]
+    let save_dir = if save {
+        let dir = find_next_run_dir("runs/detect", "predict");
+        fs::create_dir_all(&dir).expect("Failed to create save directory");
+        Some(dir)
+    } else {
+        None
+    };
+
+    // Warn if --save is used without annotate feature
+    #[cfg(not(feature = "annotate"))]
+    if save {
+        eprintln!(
+            "WARNING: --save requires the 'annotate' feature. Rebuild with: cargo build --features annotate"
+        );
+    }
 
     // Load model
     let config = InferenceConfig::new()
         .with_confidence(conf_threshold)
-        .with_iou(iou_threshold);
+        .with_iou(iou_threshold)
+        .with_half(half);
 
     let mut model = match YOLOModel::load_with_config(&model_path, config) {
         Ok(m) => m,
@@ -145,6 +177,11 @@ fn run_prediction(args: &[String]) {
             process::exit(1);
         }
     };
+
+    // Print banner matching Ultralytics format (after model load to detect precision)
+    let is_half = model.metadata().half || half;
+    let precision = if is_half { "FP16" } else { "FP32" };
+    println!("Ultralytics {} 🚀 Rust ONNX {} CPU", VERSION, precision);
 
     // Print model summary
     let imgsz = model.imgsz();
@@ -208,6 +245,22 @@ fn run_prediction(args: &[String]) {
                 result.speed.inference.unwrap_or(0.0)
             );
 
+            // Save annotated image if --save is specified
+            #[cfg(feature = "annotate")]
+            if let Some(ref dir) = save_dir {
+                if let Ok(img) = load_image(image_path) {
+                    let annotated = annotate_image(&img, &result);
+                    let filename = Path::new(image_path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy();
+                    let save_path = format!("{dir}/{filename}");
+                    if let Err(e) = annotated.save(&save_path) {
+                        eprintln!("Error saving {save_path}: {e}");
+                    }
+                }
+            }
+
             // Accumulate timings
             total_preprocess += result.speed.preprocess.unwrap_or(0.0);
             total_inference += result.speed.inference.unwrap_or(0.0);
@@ -227,6 +280,12 @@ fn run_prediction(args: &[String]) {
         last_inference_shape.0,
         last_inference_shape.1
     );
+
+    // Print save directory if --save was used
+    #[cfg(feature = "annotate")]
+    if let Some(ref dir) = save_dir {
+        println!("Results saved to {dir}");
+    }
 
     // Print footer
     println!("💡 Learn more at https://docs.ultralytics.com/modes/predict");
@@ -349,11 +408,13 @@ Options:
     --source, -s    Input source (image, video, webcam index, or URL)
     --conf          Confidence threshold (default: 0.25)
     --iou           IoU threshold for NMS (default: 0.45)
+    --half          Use FP16 half-precision inference
+    --save          Save annotated images to runs/detect/predict
 
 Examples:
     inference predict --model yolo11n.onnx --source image.jpg
     inference predict --model yolo11n.onnx --source video.mp4
     inference predict --model yolo11n.onnx --source 0 --conf 0.5
-    inference predict -m yolo11n.onnx -s rtsp://example.com/stream"#
+    inference predict -m yolo11n.onnx -s assets/ --save --half"#
     );
 }
