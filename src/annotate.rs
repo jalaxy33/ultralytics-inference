@@ -7,6 +7,7 @@
 
 use crate::results::Results;
 use crate::visualizer::color::{COLORS, POSE_COLORS};
+use crate::visualizer::skeleton::{KPT_COLOR_INDICES, LIMB_COLOR_INDICES, SKELETON};
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use image::{DynamicImage, Rgb};
 use imageproc::drawing::{draw_filled_rect_mut, draw_hollow_rect_mut, draw_text_mut};
@@ -177,7 +178,7 @@ pub fn annotate_image(
 
     // Draw all annotations using helpers
     draw_detection(&mut img, result, font.as_ref());
-    draw_pose(&mut img, result);
+    draw_pose(&mut img, result, None, None, None);
     draw_obb(&mut img, result, font.as_ref());
     draw_classification(&mut img, result, font.as_ref(), top_k.unwrap_or(5));
 
@@ -391,60 +392,57 @@ fn draw_detection(img: &mut image::RgbImage, result: &Results, font: Option<&Fon
 }
 
 /// Draw pose estimation results (skeleton and keypoints)
-fn draw_pose(img: &mut image::RgbImage, result: &Results) {
+///
+/// # Arguments
+///
+/// * `img` - The image to draw on
+/// * `result` - The inference results containing keypoints
+/// * `skeleton` - Optional custom skeleton structure (pairs of keypoint indices).
+///                If `None`, uses the default human pose skeleton from `SKELETON`.
+/// * `limb_colors` - Optional custom color indices for limbs.
+///                   If `None`, uses the default from `LIMB_COLOR_INDICES`.
+/// * `kpt_colors` - Optional custom color indices for keypoints.
+///                  If `None`, uses the default from `KPT_COLOR_INDICES`.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Use default human pose configuration
+/// draw_pose(&mut img, result, None, None, None);
+///
+/// // Use custom skeleton for animals
+/// const ANIMAL_SKELETON: [[usize; 2]; 10] = [...];
+/// const ANIMAL_LIMB_COLORS: [usize; 10] = [0, 0, 9, 9, ...];
+/// const ANIMAL_KPT_COLORS: [usize; 15] = [16, 16, 0, 0, ...];
+/// draw_pose(
+///     &mut img,
+///     result,
+///     Some(&ANIMAL_SKELETON),
+///     Some(&ANIMAL_LIMB_COLORS),
+///     Some(&ANIMAL_KPT_COLORS),
+/// );
+/// ```
+fn draw_pose(
+    img: &mut image::RgbImage,
+    result: &Results,
+    skeleton: Option<&[[usize; 2]]>,
+    limb_colors: Option<&[usize]>,
+    kpt_colors: Option<&[usize]>,
+) {
     let (width, height) = img.dimensions();
 
     if let Some(ref keypoints) = result.keypoints {
-        const SKELETON: [[usize; 2]; 19] = [
-            [15, 13],
-            [13, 11],
-            [16, 14],
-            [14, 12],
-            [11, 12],
-            [5, 11],
-            [6, 12],
-            [5, 6],
-            [5, 7],
-            [6, 8],
-            [7, 9],
-            [8, 10],
-            [1, 2],
-            [0, 1],
-            [0, 2],
-            [1, 3],
-            [2, 4],
-            [3, 5],
-            [4, 6],
-        ];
-
-        const LIMB_COLORS: [[u8; 3]; 19] = [
-            [255, 128, 0],
-            [255, 153, 51],
-            [255, 178, 102],
-            [230, 230, 0],
-            [255, 153, 255],
-            [153, 204, 255],
-            [255, 102, 255],
-            [255, 51, 255],
-            [102, 178, 255],
-            [51, 153, 255],
-            [255, 153, 153],
-            [255, 102, 102],
-            [255, 51, 51],
-            [153, 255, 153],
-            [102, 255, 102],
-            [51, 255, 51],
-            [0, 255, 0],
-            [0, 0, 255],
-            [255, 0, 0],
-        ];
+        // Use provided parameters or defaults
+        let skeleton = skeleton.unwrap_or(&SKELETON);
+        let limb_colors = limb_colors.unwrap_or(&LIMB_COLOR_INDICES);
+        let kpt_colors = kpt_colors.unwrap_or(&KPT_COLOR_INDICES);
 
         let kpt_data = &keypoints.data;
         let n_persons = kpt_data.shape()[0];
         let n_kpts = kpt_data.shape()[1];
 
         for person_idx in 0..n_persons {
-            for (limb_idx, &[kpt_a, kpt_b]) in SKELETON.iter().enumerate() {
+            for (limb_idx, &[kpt_a, kpt_b]) in skeleton.iter().enumerate() {
                 if kpt_a >= n_kpts || kpt_b >= n_kpts {
                     continue;
                 }
@@ -457,7 +455,8 @@ fn draw_pose(img: &mut image::RgbImage, result: &Results) {
                 let conf2 = kpt_data[[person_idx, kpt_b, 2]];
 
                 if conf1 > 0.5 && conf2 > 0.5 {
-                    let color = Rgb(LIMB_COLORS[limb_idx % LIMB_COLORS.len()]);
+                    let color_idx = limb_colors[limb_idx % limb_colors.len()];
+                    let color = Rgb(POSE_COLORS[color_idx]);
                     draw_line_segment(img, x1, y1, x2, y2, color, 2);
                 }
             }
@@ -468,7 +467,8 @@ fn draw_pose(img: &mut image::RgbImage, result: &Results) {
                 let conf = kpt_data[[person_idx, kpt_idx, 2]];
 
                 if conf > 0.5 && x >= 0.0 && y >= 0.0 && x < width as f32 && y < height as f32 {
-                    let color = Rgb(POSE_COLORS[kpt_idx % POSE_COLORS.len()]);
+                    let color_idx = kpt_colors[kpt_idx % kpt_colors.len()];
+                    let color = Rgb(POSE_COLORS[color_idx]);
                     draw_filled_circle(img, x as i32, y as i32, 5, color);
                 }
             }
