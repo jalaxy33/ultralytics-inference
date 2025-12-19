@@ -69,6 +69,7 @@ const CONNECT_TIMEOUT: u64 = 30;
 const READ_TIMEOUT: u64 = 300;
 
 /// Format bytes as human-readable string (e.g., "10.4MB").
+#[allow(clippy::cast_precision_loss)]
 fn format_bytes(bytes: f64) -> String {
     const KB: f64 = 1024.0;
     const MB: f64 = KB * 1024.0;
@@ -81,11 +82,12 @@ fn format_bytes(bytes: f64) -> String {
     } else if bytes >= KB {
         format!("{:.1}KB", bytes / KB)
     } else {
-        format!("{:.0}B", bytes)
+        format!("{bytes:.0}B")
     }
 }
 
 /// Format time duration.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn format_time(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{seconds:.1}s")
@@ -102,9 +104,14 @@ fn format_time(seconds: f64) -> String {
 }
 
 /// Generate progress bar string.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn generate_bar(progress: f64, width: usize) -> String {
     let filled = (progress * width as f64) as usize;
-    let partial = progress * width as f64 - filled as f64;
+    let partial = progress.mul_add(width as f64, -(filled as f64));
 
     let mut bar = "━".repeat(filled);
     if filled < width {
@@ -122,6 +129,15 @@ fn generate_bar(progress: f64, width: usize) -> String {
 ///
 /// Uses streaming download to a temporary file, then atomic rename to prevent
 /// corrupted files from partial downloads.
+#[allow(
+    clippy::similar_names,
+    clippy::too_many_lines,
+    clippy::large_stack_arrays,
+    clippy::items_after_statements,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn download_file(url: &str, dest: &Path) -> Result<()> {
     // Create ureq agent with timeouts
     let config = ureq::Agent::config_builder()
@@ -295,18 +311,17 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
 /// Attempt to download a model if it matches a known downloadable model.
 ///
 /// Currently supports:
-/// - `yolo11n.onnx` - Default YOLO11n detection model
-/// - `yolo11n-seg.onnx` - YOLO11n segmentation model
-/// - `yolo11n-pose.onnx` - YOLO11n pose estimation model
-/// - `yolo11n-obb.onnx` - YOLO11n oriented bounding box model
-/// - `yolo11n-cls.onnx` - YOLO11n classification model
+/// - `yolo11n.onnx` - Default `YOLO11n` detection model
+/// - `yolo11n-seg.onnx` - `YOLO11n` segmentation model
+/// - `yolo11n-pose.onnx` - `YOLO11n` pose estimation model
+/// - `yolo11n-obb.onnx` - `YOLO11n` oriented bounding box model
+/// - `yolo11n-cls.onnx` - `YOLO11n` classification model
+/// Downloads a YOLO model from Ultralytics assets if it's a known model.
 ///
-/// Downloads to the current working directory (or the directory specified in the path).
-///
-/// Returns the path to the downloaded model, or an error if download fails
-/// or the model is not a known downloadable model.
-pub fn try_download_model<P: AsRef<Path>>(model_path: P) -> Result<PathBuf> {
-    let path = model_path.as_ref();
+/// Returns the path to the downloaded model.
+#[allow(clippy::missing_errors_doc, clippy::doc_lazy_continuation)]
+pub fn try_download_model<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
+    let path = path.as_ref();
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
     // Map of supported downloadable models
@@ -341,6 +356,8 @@ pub fn try_download_model<P: AsRef<Path>>(model_path: P) -> Result<PathBuf> {
 ///
 /// # Returns
 /// The path to the downloaded (or existing) file, or an error if download fails
+/// # Errors
+/// Returns an error if the download fails or file I/O errors occur
 pub fn download_image(url: &str) -> Result<String> {
     let filename = url.rsplit('/').next().unwrap_or("image.jpg");
     let dest_path = Path::new(filename);
@@ -364,6 +381,7 @@ pub fn download_image(url: &str) -> Result<String> {
 ///
 /// # Arguments
 /// * `urls` - Slice of URLs to download
+#[must_use]
 pub fn download_images(urls: &[&str]) -> Vec<String> {
     urls.iter()
         .filter_map(|url| download_image(url).ok())
@@ -386,8 +404,8 @@ mod tests {
     fn test_format_bytes() {
         assert_eq!(format_bytes(500.0), "500B");
         assert_eq!(format_bytes(1024.0), "1.0KB");
-        assert_eq!(format_bytes(1048576.0), "1.0MB");
-        assert_eq!(format_bytes(1073741824.0), "1.0GB");
+        assert_eq!(format_bytes(1_048_576.0), "1.0MB");
+        assert_eq!(format_bytes(1_073_741_824.0), "1.0GB");
     }
 
     #[test]

@@ -1,5 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+#![allow(clippy::multiple_crate_versions)]
+
 //! Ultralytics YOLO Inference CLI
 //!
 //! A command-line interface for running YOLO model inference on images and videos.
@@ -57,6 +59,13 @@ fn main() {
 }
 
 /// Run YOLO model inference.
+#[allow(
+    clippy::too_many_lines,
+    clippy::option_if_let_else,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn run_prediction(args: &[String]) {
     // Parse arguments
     let mut model_path: Option<&String> = None;
@@ -138,14 +147,11 @@ fn run_prediction(args: &[String]) {
     // Use defaults with warnings if not specified
     let default_model = DEFAULT_MODEL.to_string();
 
-    let model_path = match model_path {
-        Some(m) => m.clone(),
-        None => {
-            eprintln!(
-                "WARNING ⚠️ 'model' argument is missing. Using default 'model={DEFAULT_MODEL}'."
-            );
-            default_model
-        }
+    let model_path = if let Some(m) = model_path {
+        m.clone()
+    } else {
+        eprintln!("WARNING ⚠️ 'model' argument is missing. Using default 'model={DEFAULT_MODEL}'.");
+        default_model
     };
 
     // Load model first so we can determine appropriate default source based on task
@@ -168,9 +174,8 @@ fn run_prediction(args: &[String]) {
     };
 
     // Determine source
-    let source = match source_path {
-        Some(s) => inference::source::Source::from(s.as_str()),
-        None => {
+    let source = source_path.as_ref().map_or_else(
+        || {
             // Select default images based on model task
             let default_urls = match model.task() {
                 inference::task::Task::Obb => &[inference::download::DEFAULT_OBB_IMAGE],
@@ -197,8 +202,9 @@ fn run_prediction(args: &[String]) {
                 .collect();
 
             inference::source::Source::ImageList(paths)
-        }
-    };
+        },
+        |s| inference::source::Source::from(s.as_str()),
+    );
 
     #[cfg(feature = "annotate")]
     let save_dir = if save {
@@ -225,7 +231,7 @@ fn run_prediction(args: &[String]) {
 
     let is_half = model.metadata().half || half;
     let precision = if is_half { "FP16" } else { "FP32" };
-    println!("Ultralytics {} 🚀 Rust ONNX {} CPU", VERSION, precision);
+    println!("Ultralytics {VERSION} 🚀 Rust ONNX {precision} CPU");
 
     let imgsz = model.imgsz();
     println!(
@@ -287,8 +293,7 @@ fn run_prediction(args: &[String]) {
             // Format total frames for display
             let total_frames_str = meta
                 .total_frames
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "?".to_string());
+                .map_or_else(|| "?".to_string(), |n| n.to_string());
 
             if is_video {
                 // Assuming single video input for now as per CLI structure
@@ -334,10 +339,10 @@ fn run_prediction(args: &[String]) {
             #[cfg(feature = "visualize")]
             if show {
                 // If viewer exists but dimensions don't match, drop it to recreate
-                if let Some(ref v) = viewer {
-                    if v.width != img.width() as usize || v.height != img.height() as usize {
-                        viewer = None;
-                    }
+                if let Some(ref v) = viewer
+                    && (v.width != img.width() as usize || v.height != img.height() as usize)
+                {
+                    viewer = None;
                 }
 
                 // Initialize viewer lazily with correct dimensions
@@ -399,6 +404,11 @@ fn run_prediction(args: &[String]) {
 }
 
 /// Format detection summary like "4 persons, 1 bus".
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::option_if_let_else
+)]
 fn format_detection_summary(result: &Results) -> String {
     if let Some(ref boxes) = result.boxes {
         if boxes.is_empty() {
@@ -422,11 +432,7 @@ fn format_detection_summary(result: &Results) -> String {
         let parts: Vec<String> = sorted_counts
             .iter()
             .map(|(class_id, count)| {
-                let class_name = result
-                    .names
-                    .get(class_id)
-                    .map(String::as_str)
-                    .unwrap_or("object");
+                let class_name = result.names.get(class_id).map_or("object", String::as_str);
                 // Pluralize if count > 1
                 let name = if *count > 1 {
                     pluralize(class_name)
@@ -444,11 +450,7 @@ fn format_detection_summary(result: &Results) -> String {
             let parts: Vec<String> = top5
                 .iter()
                 .map(|&i| {
-                    let name = result
-                        .names
-                        .get(&i)
-                        .map(String::as_str)
-                        .unwrap_or("unknown");
+                    let name = result.names.get(&i).map_or("unknown", String::as_str);
                     format!("{} {:.2}", name, probs.data[[i]])
                 })
                 .collect();
@@ -490,7 +492,7 @@ fn print_version() {
 /// Print usage information.
 fn print_usage() {
     println!(
-        r#"Ultralytics YOLO Inference CLI
+        r"Ultralytics YOLO Inference CLI
 ==============================
 
 Usage:
@@ -518,6 +520,6 @@ Examples:
     inference predict --model yolo11n.onnx --source video.mp4
     inference predict --model yolo11n.onnx --source 0 --conf 0.5
     inference predict -m yolo11n.onnx -s assets/ --save --half
-    inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show"#
+    inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show"
     );
 }
