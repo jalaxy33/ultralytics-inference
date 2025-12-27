@@ -9,13 +9,13 @@
 //! # Usage
 //!
 //! ```bash
-//! inference predict --model yolo11n.onnx --source image.jpg
-//! inference predict --model yolo11n.onnx --source video.mp4
-//! inference predict --model yolo11n.onnx --source 0 --conf 0.5
-//! inference predict -m yolo11n.onnx -s assets/ --save --half
-//! inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show
-//! inference version
-//! inference help
+//! ultralytics-inference predict --model yolo11n.onnx --source image.jpg
+//! ultralytics-inference predict --model yolo11n.onnx --source video.mp4
+//! ultralytics-inference predict --model yolo11n.onnx --source 0 --conf 0.5
+//! ultralytics-inference predict -m yolo11n.onnx -s assets/ --save --half
+//! ultralytics-inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show
+//! ultralytics-inference version
+//! ultralytics-inference help
 //! ```
 
 use std::collections::HashMap;
@@ -27,12 +27,13 @@ use std::process;
 use std::fs;
 
 #[cfg(feature = "annotate")]
-use inference::annotate::{annotate_image, find_next_run_dir};
+use ultralytics_inference::annotate::{annotate_image, find_next_run_dir};
 
 #[cfg(feature = "visualize")]
-use inference::visualizer::Viewer;
+use ultralytics_inference::visualizer::Viewer;
 
-use inference::{InferenceConfig, Results, VERSION, YOLOModel};
+use ultralytics_inference::utils::pluralize;
+use ultralytics_inference::{InferenceConfig, Results, VERSION, YOLOModel};
 
 /// Default model path when not specified.
 const DEFAULT_MODEL: &str = "yolo11n.onnx";
@@ -216,8 +217,10 @@ fn run_prediction(args: &[String]) {
         || {
             // Select default images based on model task
             let default_urls = match model.task() {
-                inference::task::Task::Obb => &[inference::download::DEFAULT_OBB_IMAGE],
-                _ => inference::download::DEFAULT_IMAGES,
+                ultralytics_inference::task::Task::Obb => {
+                    &[ultralytics_inference::download::DEFAULT_OBB_IMAGE]
+                }
+                _ => ultralytics_inference::download::DEFAULT_IMAGES,
             };
 
             if verbose {
@@ -228,7 +231,7 @@ fn run_prediction(args: &[String]) {
             }
 
             // Download images to current directory (skips if already exists)
-            let downloaded_files = inference::download::download_images(default_urls);
+            let downloaded_files = ultralytics_inference::download::download_images(default_urls);
 
             if downloaded_files.is_empty() {
                 eprintln!("Error: Failed to download any images");
@@ -241,19 +244,19 @@ fn run_prediction(args: &[String]) {
                 .map(std::path::PathBuf::from)
                 .collect();
 
-            inference::source::Source::ImageList(paths)
+            ultralytics_inference::source::Source::ImageList(paths)
         },
-        |s| inference::source::Source::from(s.as_str()),
+        |s| ultralytics_inference::source::Source::from(s.as_str()),
     );
 
     #[cfg(feature = "annotate")]
     let save_dir = if save {
         let parent_dir = match model.task() {
-            inference::task::Task::Detect => "runs/detect",
-            inference::task::Task::Segment => "runs/segment",
-            inference::task::Task::Pose => "runs/pose",
-            inference::task::Task::Classify => "runs/classify",
-            inference::task::Task::Obb => "runs/obb",
+            ultralytics_inference::task::Task::Detect => "runs/detect",
+            ultralytics_inference::task::Task::Segment => "runs/segment",
+            ultralytics_inference::task::Task::Pose => "runs/pose",
+            ultralytics_inference::task::Task::Classify => "runs/classify",
+            ultralytics_inference::task::Task::Obb => "runs/obb",
         };
         let dir = find_next_run_dir(parent_dir, "predict");
         fs::create_dir_all(&dir).expect("Failed to create save directory");
@@ -284,7 +287,7 @@ fn run_prediction(args: &[String]) {
 
     // Source is already initialized above
     let is_video = source.is_video();
-    let source_iter = match inference::source::SourceIterator::new(source) {
+    let source_iter = match ultralytics_inference::source::SourceIterator::new(source) {
         Ok(iter) => iter,
         Err(e) => {
             eprintln!("Error initializing source: {e}");
@@ -520,27 +523,6 @@ fn format_detection_summary(result: &Results) -> String {
     }
 }
 
-/// Simple pluralization for common COCO class names.
-fn pluralize(word: &str) -> String {
-    match word {
-        "person" => "persons".to_string(),
-        "bus" => "buses".to_string(),
-        "knife" => "knives".to_string(),
-        "mouse" => "mice".to_string(),
-        "sheep" => "sheep".to_string(),
-        "skis" => "skis".to_string(),
-        _ => {
-            if word.ends_with('s') || word.ends_with("ch") || word.ends_with("sh") {
-                format!("{word}es")
-            } else if word.ends_with('y') && !word.ends_with("ey") && !word.ends_with("ay") {
-                format!("{}ies", &word[..word.len() - 1])
-            } else {
-                format!("{word}s")
-            }
-        }
-    }
-}
-
 /// Print version information.
 fn print_version() {
     println!("Ultralytics Inference v{VERSION}");
@@ -553,9 +535,9 @@ fn print_usage() {
 ==============================
 
 Usage:
-    inference predict --model <model_path> --source <source>
-    inference version
-    inference help
+    ultralytics-inference predict --model <model_path> --source <source>
+    ultralytics-inference version
+    ultralytics-inference help
 
 Commands:
     predict    Run inference on an image, video, or stream
@@ -574,10 +556,10 @@ Options:
     --verbose       Show verbose output (default: true)
 
 Examples:
-    inference predict --model yolo11n.onnx --source image.jpg
-    inference predict --model yolo11n.onnx --source video.mp4
-    inference predict --model yolo11n.onnx --source 0 --conf 0.5
-    inference predict -m yolo11n.onnx -s assets/ --save --half
-    inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show"
+    ultralytics-inference predict --model yolo11n.onnx --source image.jpg
+    ultralytics-inference predict --model yolo11n.onnx --source video.mp4
+    ultralytics-inference predict --model yolo11n.onnx --source 0 --conf 0.5
+    ultralytics-inference predict -m yolo11n.onnx -s assets/ --save --half
+    ultralytics-inference predict -m yolo11n.onnx -s video.mp4 --imgsz 1280 --show"
     );
 }
